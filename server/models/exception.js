@@ -10,6 +10,7 @@ const exceptionSchema = new mongoose.Schema({
     required: true,
   },
   details: { type: String },
+  amountAtRisk: { type: Number, default: 0 },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Exception', exceptionSchema);

@@ -73,6 +73,7 @@ async function runReconciliation() {
         settlementId: null,
         reasonCode: 'NO_COUNTERPART',
         details: `Payment ${payment.paymentId} has no settlement`,
+        amountAtRisk: payment.amount,
       });
     }
   }
@@ -83,6 +84,7 @@ async function runReconciliation() {
     if (!settlement.matched) {
       let reason = 'NO_COUNTERPART';
       let details = `Settlement ${settlement.utr} has no matching payment`;
+      let amountAtRisk = settlement.amount;
 
       if (settlement.linkedPaymentId) {
         const linkedPay = paymentMap.get(settlement.linkedPaymentId);
@@ -91,11 +93,13 @@ async function runReconciliation() {
           if (amountDiff > tolerance) {
             reason = 'AMOUNT_MISMATCH';
             details = `Amount differs by ${amountDiff} for payment ${linkedPay.paymentId}`;
+            amountAtRisk = amountDiff;
           } else {
             const dateDiff = Math.abs(new Date(settlement.settledOn) - new Date(linkedPay.timestamp));
             if (dateDiff > windowMs) {
               reason = 'DATE_OUT_OF_WINDOW';
               details = `Settlement date ${settlement.settledOn} is outside ${config.matchWindowDays}-day window for payment ${linkedPay.paymentId}`;
+              amountAtRisk = linkedPay.amount;
             }
           }
         }
@@ -107,6 +111,7 @@ async function runReconciliation() {
         if (duplicate) {
           reason = 'DUPLICATE_SETTLEMENT';
           details = `Multiple settlements linked to payment ${settlement.linkedPaymentId}`;
+          amountAtRisk = settlement.amount;
         }
       }
 
@@ -116,6 +121,7 @@ async function runReconciliation() {
         settlementId: settlement.utr,
         reasonCode: reason,
         details,
+        amountAtRisk,
       });
     }
   }
@@ -126,6 +132,17 @@ async function runReconciliation() {
   const exceptionCount = exceptions.length;
   const matchRate = totalPayments ? (matchedCount / totalPayments) * 100 : 0;
 
+  // Persist exceptions with the runId
+  const exceptionDocs = exceptions.map(exc => ({ ...exc, runId }));
+  await Exception.insertMany(exceptionDocs);
+
+  // Compute total amount at risk and breakdown by reason code
+  const totalAmountAtRisk = exceptionDocs.reduce((sum, cur) => sum + cur.amountAtRisk, 0);
+  const amountAtRiskByReasonCode = exceptionDocs.reduce((acc, cur) => {
+    acc[cur.reasonCode] = (acc[cur.reasonCode] || 0) + cur.amountAtRisk;
+    return acc;
+  }, {});
+
   const runDoc = new ReconciliationRun({
     runId,
     totalPayments,
@@ -133,12 +150,10 @@ async function runReconciliation() {
     matchedCount,
     exceptionCount,
     matchRate: Number(matchRate.toFixed(2)),
+    totalAmountAtRisk,
+    amountAtRiskByReasonCode,
   });
   await runDoc.save();
-
-  // Persist exceptions with the runId
-  const exceptionDocs = exceptions.map(exc => ({ ...exc, runId }));
-  await Exception.insertMany(exceptionDocs);
 
   const breakdown = exceptionDocs.reduce((acc, cur) => {
     acc[cur.reasonCode] = (acc[cur.reasonCode] || 0) + 1;
@@ -153,6 +168,8 @@ async function runReconciliation() {
     matchedCount,
     exceptionCount,
     exceptionBreakdown: breakdown,
+    totalAmountAtRisk,
+    amountAtRiskByReasonCode,
   };
 }
 

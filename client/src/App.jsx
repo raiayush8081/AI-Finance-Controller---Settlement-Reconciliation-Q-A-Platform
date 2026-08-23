@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import ExceptionTable from './components/ExceptionTable';
 import ChatPanel from './components/ChatPanel';
-import { runReconciliation, getExceptions, askQuestion } from './api';
+import { runReconciliation, getExceptions, askQuestion, getLatestRun } from './api';
 
 export default function App() {
   const [isReconciling, setIsReconciling] = useState(false);
@@ -13,6 +13,8 @@ export default function App() {
     totalPayments: 0,
     totalSettlements: 0,
     exceptionCount: 0,
+    totalAmountAtRisk: 0,
+    runId: null,
   });
   const [chatHistory, setChatHistory] = useState([]);
 
@@ -23,14 +25,28 @@ export default function App() {
 
   const fetchInitialData = async () => {
     try {
-      const res = await getExceptions();
-      if (res.success && res.data) {
-        setExceptions(res.data);
+      const runRes = await getLatestRun();
+      if (runRes.success && runRes.data) {
+        const runData = runRes.data;
+        setStats({
+          matchRate: runData.matchRate,
+          totalPayments: runData.totalPayments,
+          totalSettlements: runData.totalSettlements,
+          exceptionCount: runData.exceptionCount,
+          totalAmountAtRisk: runData.totalAmountAtRisk || 0,
+          runId: runData.runId,
+        });
+
+        const excRes = await getExceptions(runData.runId);
+        if (excRes.success && excRes.data) {
+          setExceptions(excRes.data);
+        }
+      } else {
+        const res = await getExceptions();
+        if (res.success && res.data) {
+          setExceptions(res.data);
+        }
       }
-      
-      // Let's also fetch a summary by hitting exceptions if we want.
-      // But actually, when we trigger a run, we get the stats.
-      // Let's call /api/reconcile/run or query details.
     } catch (err) {
       console.error("Error loading initial data", err);
     }
@@ -44,9 +60,11 @@ export default function App() {
         const data = res.data;
         setStats({
           matchRate: data.matchRate,
-          totalPayments: data.totalPayments || 50, // default if not sent
+          totalPayments: data.totalPayments || 50,
           totalSettlements: data.totalSettlements || 50,
           exceptionCount: data.exceptionCount,
+          totalAmountAtRisk: data.totalAmountAtRisk || 0,
+          runId: data.runId,
         });
         
         // Fetch the exceptions for this new run
@@ -98,6 +116,8 @@ export default function App() {
         onRunReconcile={handleRunReconcile} 
         isReconciling={isReconciling} 
         matchRate={stats.matchRate}
+        totalAmountAtRisk={stats.totalAmountAtRisk}
+        runId={stats.runId}
       />
       
       <div className="stats-container">

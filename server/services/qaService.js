@@ -11,7 +11,7 @@ let model = null;
 
 if (config.geminiApiKey) {
   genAI = new GoogleGenerativeAI(config.geminiApiKey);
-  model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+  model = null; // Gemini disabled – using local fallback parser
 }
 
 // Gemini Tool declaration
@@ -126,6 +126,28 @@ function localFallbackParser(question) {
  * 3. Querying Gemini to phrase the plain‑English response
  */
 async function handleQuestion(question) {
+  // If Gemini API key is missing, genAI or model is not initialized, fall back to deterministic parser
+  if (!config.geminiApiKey || !genAI || !model) {
+    console.warn('⚠️ Gemini not configured or unavailable. Using local deterministic fallback parser.');
+    const fallbackPlan = localFallbackParser(question);
+    if (fallbackPlan) {
+      const rawResult = await executeMongoQuery(fallbackPlan.collection, fallbackPlan.filter, fallbackPlan.projection);
+      return {
+        answer: `⚠️ [Local Fallback Mode]\n\n${fallbackPlan.formatAnswer(rawResult)}`,
+        rawResult,
+      };
+    }
+    // Generic fallback for settlement count today
+    if (/settled today/i.test(question)) {
+      const start = new Date();
+      start.setHours(0,0,0,0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      const count = await Settlement.countDocuments({ settledOn: { $gte: start, $lt: end } });
+      return { answer: `There are ${count} payments settled today.`, rawResult: [{ count }] };
+    }
+    throw new Error('Gemini is not configured and no fallback plan available.');
+  }
   // If GEMINI_API_KEY is not defined, immediately fall back to local parser
   if (!config.geminiApiKey || !genAI) {
     console.warn('⚠️ GEMINI_API_KEY is not set. Using local deterministic fallback parser.');
@@ -161,7 +183,7 @@ Question: "${question}"`;
     });
 
     const response = result.response;
-    
+
     // Extract function call
     let call = null;
     if (response.functionCalls && response.functionCalls.length > 0) {
@@ -192,9 +214,7 @@ Question: "${question}"`;
         {
           role: 'user',
           parts: [{
-            text: `Here is the structured data retrieved from MongoDB:\n\n${JSON.stringify(rawResult, null, 2)}\n\n` +
-              `Original Question: "${question}"\n\n` +
-              `Please write a concise plain-English answer summarizing this data to answer the original question.`
+            text: `Here is the structured data retrieved from MongoDB:\n\n${JSON.stringify(rawResult, null, 2)}\n\nOriginal Question: "${question}"\n\nPlease write a concise plain-English answer summarizing this data to answer the original question.`
           }]
         }
       ]

@@ -14,6 +14,18 @@ export default function ExceptionTable({ exceptions }) {
     return matchesReason && matchesSearch;
   });
 
+  const sortedExceptions = [...filteredExceptions].sort((a, b) => {
+    const amtA = a.amountAtRisk || 0;
+    const amtB = b.amountAtRisk || 0;
+    return amtB - amtA;
+  });
+
+  const currencyFormatter = new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  });
+
   return (
     <div className="panel">
       <div className="panel-header">
@@ -56,11 +68,12 @@ export default function ExceptionTable({ exceptions }) {
                 <th>Reason Code</th>
                 <th>Payment ID</th>
                 <th>Settlement UTR</th>
+                <th>Amount at Risk</th>
                 <th>Details</th>
               </tr>
             </thead>
             <tbody>
-              {filteredExceptions.map((exc, idx) => (
+              {sortedExceptions.map((exc, idx) => (
                 <tr key={exc._id || idx}>
                   <td>
                     <span className={`badge badge-${exc.reasonCode}`}>
@@ -72,6 +85,9 @@ export default function ExceptionTable({ exceptions }) {
                   </td>
                   <td>
                     <code style={{ color: '#06b6d4' }}>{exc.settlementId || 'N/A'}</code>
+                  </td>
+                  <td style={{ color: '#f43f5e', fontWeight: '600' }}>
+                    {currencyFormatter.format(exc.amountAtRisk || 0)}
                   </td>
                   <td style={{ color: '#e5e7eb' }}>{exc.details}</td>
                 </tr>

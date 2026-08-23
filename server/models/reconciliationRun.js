@@ -8,6 +8,8 @@ const reconciliationRunSchema = new mongoose.Schema({
   matchedCount: { type: Number, required: true },
   exceptionCount: { type: Number, required: true },
   matchRate: { type: Number, required: true }, // percentage (0-100)
+  totalAmountAtRisk: { type: Number, required: true },
+  amountAtRiskByReasonCode: { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
 module.exports = mongoose.model('ReconciliationRun', reconciliationRunSchema);

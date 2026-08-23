@@ -7,6 +7,11 @@ export const runReconciliation = async () => {
   return response.data;
 };
 
+export const getLatestRun = async () => {
+  const response = await axios.get(`${API_BASE}/reconcile/latest`);
+  return response.data;
+};
+
 export const getExceptions = async (runId = '') => {
   const response = await axios.get(`${API_BASE}/exceptions`, {
     params: { runId }
